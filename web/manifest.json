@@ -1,6 +1,6 @@
 {
-    "name": "ca_attendence",
-    "short_name": "ca_attendence",
+    "name": "ca_attendance",
+    "short_name": "ca_attendance",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

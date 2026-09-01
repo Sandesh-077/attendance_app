@@ -1,4 +1,4 @@
-# ca_attendence
+# ca_attendance
 
 A new Flutter project.
 

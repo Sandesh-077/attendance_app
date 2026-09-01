@@ -44,13 +44,21 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Firebase
-android/app/google-services.json
-ios/Runner/GoogleService-Info.plist
-lib/firebase_options.dart
-pubspec.lock
+# Firebase / app secrets
+**/google-services.json
+**/GoogleService-Info.plist
+**/firebase_options.dart
+**/firebase_app_id_file.json
+.firebase/
+*.jks
+*.keystore
 
+# Local package lockfile
+pubspec.lock
 
 # Environment files
 .env
 *.env
+
+# Local project guide
+/guide.md
