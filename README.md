@@ -1,6 +1,6 @@
 # ca_attendance
 
-A new Flutter project.
+The README file is being built. You have to wait a few more days.
 
 ## Getting Started
 
