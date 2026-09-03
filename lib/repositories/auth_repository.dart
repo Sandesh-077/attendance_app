@@ -1,31 +1,37 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class AuthRepository {
+  // Firebase auth instance
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  // Firestore instance
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /*
-  // Something is off here, commenting it for now to avoid syntax errors
-  try {
-    final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-      email: emailAddress,
-      password: password
+  // Login
+  Future<String?> login({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      // SignIn user using firebase email and password authentication
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
       );
-    } on FirebaseAuthException catch (e) {
-    if (e.code == 'user-not-found') {
-      print('No user found for that email.');
-    } else if (e.code == 'wrong-password') {
-      print('Wrong password provided for that user.');
+
+      // Fetching the user's role from firestore
+      DocumentSnapshot userDoc = await _firestore
+          .collection("users")
+          .doc(userCredential.user!.uid)
+          .get();
+      return userDoc['role'];
+    } catch (e) {
+      return e.toString();
     }
   }
-  */
-  
-  // Example of a valid method
-  Future<UserCredential?> signIn(String email, String password) async {
-    try {
-      return await _auth.signInWithEmailAndPassword(email: email, password: password);
-    } catch (e) {
-      print(e.toString());
-      return null;
-    }
+
+  Future<String?> getUserRole(String uid) async {
+    final document = await _firestore.collection('users').doc(uid).get();
+    return document.data()?['role'] as String?;
   }
 }
