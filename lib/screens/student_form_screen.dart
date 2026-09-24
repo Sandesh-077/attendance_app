@@ -11,11 +11,13 @@ class StudentFormScreen extends StatefulWidget {
     required this.repository,
     required this.classRepository,
     this.student,
+    this.fixedClassId,
   });
 
   final StudentRepository repository;
   final ClassRepository classRepository;
   final StudentModel? student;
+  final String? fixedClassId;
 
   @override
   State<StudentFormScreen> createState() => _StudentFormScreenState();
@@ -26,8 +28,9 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
   late final _name = TextEditingController(text: widget.student?.name);
   late final _roll = TextEditingController(text: widget.student?.rollNumber);
   late final _classes = widget.classRepository.watchAll();
-  late String? _classId = widget.student?.classId;
+  late String? _classId = widget.fixedClassId ?? widget.student?.classId;
   bool _saving = false;
+  bool _addedStudent = false;
 
   String? _validate(String? value, int max) {
     final text = value?.trim() ?? '';
@@ -62,7 +65,13 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
         );
       }
       if (!mounted) return;
-      Navigator.pop(context, true);
+      if (student != null) {
+        Navigator.pop(context, true);
+      } else {
+        _name.clear();
+        _roll.clear();
+        setState(() => _addedStudent = true);
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -145,30 +154,40 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
                     validator: (value) => _validate(value, 40),
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: active.any((item) => item.id == _classId)
-                        ? _classId
-                        : null,
-                    decoration: const InputDecoration(
-                      labelText: 'Class',
-                      border: OutlineInputBorder(),
-                    ),
-                    hint: const Text('Select a class'),
-                    items: [
-                      for (final item in active)
-                        DropdownMenuItem(
-                          value: item.id,
-                          child: Text(
-                            'Grade ${item.grade} - ${item.section} (${item.academicYear})',
+                  if (widget.fixedClassId == null)
+                    DropdownButtonFormField<String>(
+                      initialValue: active.any((item) => item.id == _classId)
+                          ? _classId
+                          : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Class',
+                        border: OutlineInputBorder(),
+                      ),
+                      hint: const Text('Select a class'),
+                      items: [
+                        for (final item in active)
+                          DropdownMenuItem(
+                            value: item.id,
+                            child: Text(
+                              'Grade ${item.grade} - ${item.section} (${item.academicYear})',
+                            ),
                           ),
-                        ),
-                    ],
-                    onChanged: _saving
-                        ? null
-                        : (value) => setState(() => _classId = value),
-                    validator: (value) =>
-                        value == null ? 'Select an active class.' : null,
-                  ),
+                      ],
+                      onChanged: _saving
+                          ? null
+                          : (value) => setState(() => _classId = value),
+                      validator: (value) =>
+                          value == null ? 'Select an active class.' : null,
+                    ),
+                  if (widget.fixedClassId != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        active.any((item) => item.id == widget.fixedClassId)
+                            ? 'Class: ${active.firstWhere((item) => item.id == widget.fixedClassId).grade} - ${active.firstWhere((item) => item.id == widget.fixedClassId).section}'
+                            : 'Selected class is not active.',
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -178,10 +197,22 @@ class _StudentFormScreenState extends State<StudentFormScreen> {
                 child: Text('Add an active class before adding students.'),
               ),
             const SizedBox(height: 24),
+            if (_addedStudent)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'Student added. Enter another student or tap Done.',
+                ),
+              ),
             FilledButton(
               onPressed: _saving || active.isEmpty ? null : () => _save(active),
               child: Text(_saving ? 'Saving…' : 'Save Student'),
             ),
+            if (_addedStudent)
+              TextButton(
+                onPressed: _saving ? null : () => Navigator.pop(context, true),
+                child: const Text('Done'),
+              ),
           ],
         );
       },

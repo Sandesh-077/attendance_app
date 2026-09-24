@@ -14,8 +14,13 @@ import '../repositories/student_report_repository.dart';
 String attendanceDateKey(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
-bool reportDetailsValid(ReportSeverity severity, String details) =>
-    severity != ReportSeverity.serious || details.trim().length >= 10;
+bool reportDetailsValid(
+  ReportSeverity severity,
+  String details, {
+  bool requiresDetails = false,
+}) => severity == ReportSeverity.serious
+    ? details.trim().length >= 10
+    : !requiresDetails || details.trim().isNotEmpty;
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({
@@ -40,7 +45,43 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Future<List<ReportOptionModel>>? _reportOptions;
   bool _loading = true;
   bool _saving = false;
+  bool _allowPop = false;
+  bool _confirmingLeave = false;
   String? _error;
+
+  bool get _hasUnsavedChanges => _selected.entries.any(
+    (entry) => _existing[entry.key]?.status != entry.value,
+  );
+
+  Future<bool> _confirmDiscardChanges() async {
+    if (!_hasUnsavedChanges) return true;
+    if (_confirmingLeave) return false;
+    _confirmingLeave = true;
+    try {
+      return await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Leave without saving?'),
+              content: const Text(
+                'Your attendance changes have not been saved. Continue marking attendance or leave and discard the changes?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Continue'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('Leave'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    } finally {
+      _confirmingLeave = false;
+    }
+  }
 
   @override
   void initState() {
@@ -97,6 +138,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (picked != null &&
         mounted &&
         attendanceDateKey(picked) != attendanceDateKey(_date)) {
+      if (!await _confirmDiscardChanges() || !mounted) return;
       _date = picked;
       _sessionReportCounts.clear();
       await _load();
@@ -194,131 +236,142 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(
-        'Grade ${widget.schoolClass.grade} - ${widget.schoolClass.section} Attendance',
-      ),
-    ),
-    body: Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Expanded(child: Text('Date: ${attendanceDateKey(_date)}')),
-              OutlinedButton.icon(
-                onPressed: _saving ? null : _chooseDate,
-                icon: const Icon(Icons.calendar_today),
-                label: const Text('Change date'),
-              ),
-            ],
-          ),
+  Widget build(BuildContext context) => PopScope<void>(
+    canPop: _allowPop || (!_saving && !_hasUnsavedChanges),
+    onPopInvokedWithResult: (didPop, _) async {
+      if (didPop ||
+          _saving ||
+          !await _confirmDiscardChanges() ||
+          !context.mounted) {
+        return;
+      }
+      setState(() => _allowPop = true);
+      Navigator.of(context).pop();
+    },
+    child: Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Grade ${widget.schoolClass.grade} - ${widget.schoolClass.section} Attendance',
         ),
-        if (_loading)
-          const Expanded(child: Center(child: CircularProgressIndicator()))
-        else if (_error != null)
-          Expanded(child: Center(child: Text(_error!)))
-        else if (_students!.isEmpty)
-          const Expanded(
-            child: Center(child: Text('No active students in this class.')),
-          )
-        else ...[
+      ),
+      body: Column(
+        children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              '${_selected.length} of ${_students!.length} marked. Select a status for every student.',
+            padding: const EdgeInsets.all(16),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('Date: ${attendanceDateKey(_date)}'),
+                OutlinedButton.icon(
+                  onPressed: _saving ? null : _chooseDate,
+                  icon: const Icon(Icons.calendar_today),
+                  label: const Text('Change date'),
+                ),
+              ],
             ),
           ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _students!.length,
-              itemBuilder: (context, index) {
-                final student = _students![index];
-                return Card(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 4,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${student.rollNumber}  ${student.name}',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 6),
-                        SegmentedButton<AttendanceStatus>(
-                          showSelectedIcon: false,
-                          segments: const [
-                            ButtonSegment(
-                              value: AttendanceStatus.present,
-                              label: Text('Present'),
-                            ),
-                            ButtonSegment(
-                              value: AttendanceStatus.absent,
-                              label: Text('Absent'),
-                            ),
-                            ButtonSegment(
-                              value: AttendanceStatus.late,
-                              label: Text('Late'),
-                            ),
-                          ],
-                          selected: _selected[student.id] == null
-                              ? {}
-                              : {_selected[student.id]!},
-                          emptySelectionAllowed: true,
-                          onSelectionChanged: _saving
-                              ? null
-                              : (value) => setState(
-                                  () => _selected[student.id] = value.first,
+          if (_loading)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_error != null)
+            Expanded(child: Center(child: Text(_error!)))
+          else if (_students!.isEmpty)
+            const Expanded(
+              child: Center(child: Text('No active students in this class.')),
+            )
+          else ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '${_selected.length} of ${_students!.length} marked. Select a status for every student.',
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _students!.length,
+                itemBuilder: (context, index) {
+                  final student = _students![index];
+                  return Card(
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${student.rollNumber}  ${student.name}',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              for (final (status, label) in [
+                                (AttendanceStatus.present, 'Present'),
+                                (AttendanceStatus.absent, 'Absent'),
+                                (AttendanceStatus.late, 'Late'),
+                              ])
+                                ChoiceChip(
+                                  label: Text(label, softWrap: false),
+                                  selected: _selected[student.id] == status,
+                                  onSelected: _saving
+                                      ? null
+                                      : (_) => setState(
+                                          () => _selected[student.id] = status,
+                                        ),
                                 ),
-                        ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton.icon(
-                            onPressed:
-                                _saving || !_existing.containsKey(student.id)
-                                ? null
-                                : () => _report(student),
-                            icon: const Icon(Icons.flag_outlined, size: 18),
-                            label: Text(
-                              !_existing.containsKey(student.id)
-                                  ? 'Save attendance to report'
-                                  : _sessionReportCounts[student.id] == null
-                                  ? 'Report'
-                                  : 'Report • ${_sessionReportCounts[student.id]}',
+                            ],
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed:
+                                  _saving || !_existing.containsKey(student.id)
+                                  ? null
+                                  : () => _report(student),
+                              icon: const Icon(Icons.flag_outlined, size: 18),
+                              label: Text(
+                                !_existing.containsKey(student.id)
+                                    ? 'Save attendance to report'
+                                    : _sessionReportCounts[student.id] == null
+                                    ? 'Report'
+                                    : 'Report • ${_sessionReportCounts[student.id]}',
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _saving || _selected.length != _students!.length
-                      ? null
-                      : _save,
-                  icon: const Icon(Icons.save_outlined),
-                  label: Text(
-                    _saving ? 'Saving…' : 'Review and save attendance',
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _saving || _selected.length != _students!.length
+                        ? null
+                        : _save,
+                    icon: const Icon(Icons.save_outlined),
+                    label: Text(
+                      _saving ? 'Saving…' : 'Review and save attendance',
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
-      ],
+      ),
     ),
   );
 }
@@ -360,10 +413,15 @@ class _StudentReportDialogState extends State<_StudentReportDialog> {
       setState(() => _error = 'Choose a report reason.');
       return;
     }
-    if (!reportDetailsValid(_severity, details)) {
+    if (!reportDetailsValid(
+      _severity,
+      details,
+      requiresDetails: _option!.requiresDetails,
+    )) {
       setState(
-        () => _error =
-            'Serious reports need at least 10 characters of explanation.',
+        () => _error = _severity == ReportSeverity.serious
+            ? 'Serious reports need at least 10 characters of explanation.'
+            : 'Details are required for this report reason.',
       );
       return;
     }
@@ -446,25 +504,23 @@ class _StudentReportDialogState extends State<_StudentReportDialog> {
                 },
               ),
               const SizedBox(height: 16),
-              SegmentedButton<ReportSeverity>(
-                segments: const [
-                  ButtonSegment(
-                    value: ReportSeverity.minor,
-                    label: Text('Minor'),
-                  ),
-                  ButtonSegment(
-                    value: ReportSeverity.moderate,
-                    label: Text('Moderate'),
-                  ),
-                  ButtonSegment(
-                    value: ReportSeverity.serious,
-                    label: Text('Serious'),
-                  ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  for (final (severity, label) in [
+                    (ReportSeverity.minor, 'Minor'),
+                    (ReportSeverity.moderate, 'Moderate'),
+                    (ReportSeverity.serious, 'Serious'),
+                  ])
+                    ChoiceChip(
+                      label: Text(label, softWrap: false),
+                      selected: _severity == severity,
+                      onSelected: _submitting
+                          ? null
+                          : (_) => setState(() => _severity = severity),
+                    ),
                 ],
-                selected: {_severity},
-                onSelectionChanged: _submitting
-                    ? null
-                    : (value) => setState(() => _severity = value.first),
               ),
               const SizedBox(height: 16),
               TextField(
@@ -476,6 +532,8 @@ class _StudentReportDialogState extends State<_StudentReportDialog> {
                   labelText: 'Details',
                   helperText: _severity == ReportSeverity.serious
                       ? 'Required: explain what happened (at least 10 characters).'
+                      : _option?.requiresDetails == true
+                      ? 'Required for this reason.'
                       : _option?.category == ReportCategory.discipline
                       ? 'Please explain what happened.'
                       : 'Optional',
@@ -518,12 +576,18 @@ class _ClassAttendanceHistoryScreenState
     extends State<ClassAttendanceHistoryScreen> {
   late Future<List<AttendanceModel>> _history = AttendanceRepository()
       .classHistory(widget.schoolClass.id);
-  late final Future<List<StudentModel>> _roster = StudentRepository()
-      .watchActiveClass(widget.schoolClass.id)
-      .first;
+  late Future<List<StudentModel>> _roster = _loadRoster();
   DateTime _selectedDate = DateUtils.dateOnly(
     DateTime.now().subtract(const Duration(days: 1)),
   );
+
+  Future<List<StudentModel>> _loadRoster() async {
+    final records = await _history;
+    return StudentRepository().attendanceHistoryRoster(
+      widget.schoolClass.id,
+      records.map((record) => record.studentId),
+    );
+  }
 
   void _moveDay(int offset) {
     final next = DateUtils.dateOnly(_selectedDate.add(Duration(days: offset)));
@@ -552,11 +616,10 @@ class _ClassAttendanceHistoryScreenState
       ),
     );
     if (mounted) {
-      setState(
-        () => _history = AttendanceRepository().classHistory(
-          widget.schoolClass.id,
-        ),
-      );
+      setState(() {
+        _history = AttendanceRepository().classHistory(widget.schoolClass.id);
+        _roster = _loadRoster();
+      });
     }
   }
 
@@ -674,7 +737,10 @@ class _ClassAttendanceHistoryScreenState
                   final students = (rosterSnapshot.data ?? [])
                       .where(
                         (student) =>
-                            student.createdAt.toDate().isBefore(dayEnd),
+                            student.createdAt.toDate().isBefore(dayEnd) ||
+                            records.any(
+                              (record) => record.studentId == student.id,
+                            ),
                       )
                       .toList();
                   final studentById = {
@@ -711,10 +777,12 @@ class _ClassAttendanceHistoryScreenState
                       for (final id in ids)
                         Card(
                           child: ListTile(
-                            title: Text(studentById[id]?.name ?? 'Student $id'),
+                            title: Text(
+                              studentById[id]?.name ?? 'Student unavailable',
+                            ),
                             subtitle: Text(
                               studentById[id] == null
-                                  ? 'No longer on the active roster'
+                                  ? 'Student record unavailable'
                                   : 'Roll ${studentById[id]!.rollNumber}',
                             ),
                             trailing: Chip(

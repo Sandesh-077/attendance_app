@@ -33,6 +33,17 @@ class StudentRepository {
     return snapshot.docs.map(StudentModel.fromDocument).toList();
   }
 
+  /// Includes active classmates and students referenced by historical records.
+  Future<List<StudentModel>> attendanceHistoryRoster(
+    String classId,
+    Iterable<String> recordedStudentIds,
+  ) async => resolveAttendanceHistoryRoster(
+    classId,
+    await activeClass(classId),
+    recordedStudentIds,
+    get,
+  );
+
   Stream<List<StudentModel>> watchAll() => _db
       .collection('students')
       .snapshots()
@@ -67,4 +78,21 @@ class StudentRepository {
 
   Future<void> archive(String id) =>
       _db.collection('students').doc(id).update({'isArchived': true});
+}
+
+Future<List<StudentModel>> resolveAttendanceHistoryRoster(
+  String classId,
+  List<StudentModel> active,
+  Iterable<String> recordedStudentIds,
+  Future<StudentModel?> Function(String id) lookup,
+) async {
+  final byId = {for (final student in active) student.id: student};
+  final missingIds = recordedStudentIds.toSet().difference(byId.keys.toSet());
+  final missingStudents = await Future.wait(missingIds.map(lookup));
+  for (final student in missingStudents) {
+    if (student != null && student.classId == classId) {
+      byId[student.id] = student;
+    }
+  }
+  return byId.values.toList();
 }

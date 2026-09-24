@@ -5,9 +5,12 @@ import '../models/class_model.dart';
 import '../repositories/class_repository.dart';
 import 'class_detail_screen.dart';
 import 'class_form_screen.dart';
+import 'attendance_screen.dart';
 
 class ClassesScreen extends StatefulWidget {
-  const ClassesScreen({super.key});
+  const ClassesScreen({super.key, this.attendanceMode = false});
+
+  final bool attendanceMode;
 
   @override
   State<ClassesScreen> createState() => _ClassesScreenState();
@@ -48,10 +51,14 @@ class _ClassesScreenState extends State<ClassesScreen> {
     await Navigator.push<void>(
       context,
       MaterialPageRoute(
-        builder: (_) => ClassDetailScreen(
-          schoolClass: schoolClass,
-          repository: _repository,
-        ),
+        builder: (_) => widget.attendanceMode
+            ? schoolClass.isArchived
+                  ? ClassAttendanceHistoryScreen(schoolClass: schoolClass)
+                  : AttendanceScreen(schoolClass: schoolClass)
+            : ClassDetailScreen(
+                schoolClass: schoolClass,
+                repository: _repository,
+              ),
       ),
     );
   }
@@ -160,7 +167,7 @@ class _ClassesScreenState extends State<ClassesScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    'Classes',
+                    widget.attendanceMode ? 'Attendance' : 'Classes',
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -168,14 +175,20 @@ class _ClassesScreenState extends State<ClassesScreen> {
                     ),
                   ),
                 ),
-                FilledButton.icon(
-                  onPressed: _addClass,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Class'),
-                ),
+                if (!widget.attendanceMode)
+                  FilledButton.icon(
+                    onPressed: _addClass,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add Class'),
+                  ),
               ],
             ),
             const SizedBox(height: 20),
+            if (widget.attendanceMode)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 16),
+                child: Text('Choose a class to mark or review attendance.'),
+              ),
             if (classes.isEmpty)
               const Card(
                 child: Padding(
@@ -190,6 +203,7 @@ class _ClassesScreenState extends State<ClassesScreen> {
                 _ClassCard(
                   schoolClass: item,
                   onOpen: () => _openClass(item),
+                  attendanceMode: widget.attendanceMode,
                   onArchive: _archiving.contains(item.id)
                       ? null
                       : () => _archive(item),
@@ -203,6 +217,7 @@ class _ClassesScreenState extends State<ClassesScreen> {
                 _ClassCard(
                   schoolClass: item,
                   onOpen: () => _openClass(item),
+                  attendanceMode: widget.attendanceMode,
                   onUnarchive: _archiving.contains(item.id)
                       ? null
                       : () => _unarchive(item),
@@ -219,12 +234,14 @@ class _ClassCard extends StatelessWidget {
   const _ClassCard({
     required this.schoolClass,
     required this.onOpen,
+    this.attendanceMode = false,
     this.onArchive,
     this.onUnarchive,
   });
 
   final ClassModel schoolClass;
   final VoidCallback onOpen;
+  final bool attendanceMode;
   final VoidCallback? onArchive;
   final VoidCallback? onUnarchive;
 
@@ -232,32 +249,49 @@ class _ClassCard extends StatelessWidget {
   Widget build(BuildContext context) => Card(
     child: ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      leading: const Icon(Icons.class_outlined),
-      title: Text('Grade ${schoolClass.grade} - ${schoolClass.section}'),
+      leading: schoolClass.isArchived
+          ? Tooltip(
+              message: 'Archived class',
+              child: Icon(
+                Icons.archive_outlined,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                semanticLabel: 'Archived class',
+              ),
+            )
+          : const Icon(Icons.class_outlined),
+      title: Text(
+        'Grade ${schoolClass.grade} - ${schoolClass.section}',
+        style: schoolClass.isArchived
+            ? TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)
+            : null,
+      ),
       subtitle: Text('Academic Year ${schoolClass.academicYear}'),
       onTap: onOpen,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (schoolClass.isArchived) const Chip(label: Text('Archived')),
-          PopupMenuButton<String>(
-            tooltip: 'Class actions',
-            onSelected: (value) {
-              if (value == 'archive') onArchive?.call();
-              if (value == 'unarchive') onUnarchive?.call();
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: schoolClass.isArchived ? 'unarchive' : 'archive',
-                enabled: schoolClass.isArchived
-                    ? onUnarchive != null
-                    : onArchive != null,
-                child: Text(schoolClass.isArchived ? 'Unarchive' : 'Archive'),
-              ),
-            ],
-          ),
-        ],
-      ),
+      trailing: attendanceMode
+          ? const Icon(Icons.chevron_right)
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                PopupMenuButton<String>(
+                  tooltip: 'Class actions',
+                  onSelected: (value) {
+                    if (value == 'archive') onArchive?.call();
+                    if (value == 'unarchive') onUnarchive?.call();
+                  },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: schoolClass.isArchived ? 'unarchive' : 'archive',
+                      enabled: schoolClass.isArchived
+                          ? onUnarchive != null
+                          : onArchive != null,
+                      child: Text(
+                        schoolClass.isArchived ? 'Unarchive' : 'Archive',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
     ),
   );
 }

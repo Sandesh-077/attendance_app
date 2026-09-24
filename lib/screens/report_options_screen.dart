@@ -19,18 +19,27 @@ class _ReportOptionsScreenState extends State<ReportOptionsScreen> {
 
   Future<void> _edit([ReportOptionModel? option]) async {
     if (_busy || widget.schoolClass.isArchived) return;
-    final result = await showDialog<(String, ReportCategory)>(
+    final result = await showDialog<(String, ReportCategory, bool)>(
       context: context,
       builder: (_) => _ReportOptionDialog(option: option),
     );
     if (result == null || !mounted) return;
     setState(() => _busy = true);
     try {
-      if (option == null) {
+      if (option?.isDefault == true) {
+        await _repository.customizeDefault(
+          classId: widget.schoolClass.id,
+          defaultOption: option!,
+          title: result.$1,
+          requiresDetails: result.$3,
+          actorId: FirebaseAuth.instance.currentUser!.uid,
+        );
+      } else if (option == null) {
         await _repository.create(
           classId: widget.schoolClass.id,
           title: result.$1,
           category: result.$2,
+          requiresDetails: result.$3,
           actorId: FirebaseAuth.instance.currentUser!.uid,
         );
       } else {
@@ -38,6 +47,7 @@ class _ReportOptionsScreenState extends State<ReportOptionsScreen> {
           option.id,
           title: result.$1,
           category: result.$2,
+          requiresDetails: result.$3,
         );
       }
       if (mounted) {
@@ -45,11 +55,15 @@ class _ReportOptionsScreenState extends State<ReportOptionsScreen> {
           context,
         ).showSnackBar(const SnackBar(content: Text('Report option saved.')));
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Unable to save report option. Please try again.'),
+          SnackBar(
+            content: Text(
+              error is FirebaseException && error.code == 'permission-denied'
+                  ? 'Permission denied. Check that the latest Firestore rules are deployed and your account is an admin.'
+                  : 'Unable to save report option. Please try again.',
+            ),
           ),
         );
       }
@@ -125,6 +139,10 @@ class _ReportOptionsScreenState extends State<ReportOptionsScreen> {
         final custom = snapshot.data ?? [];
         final active = custom.where((o) => o.isActive).toList()
           ..sort((a, b) => a.title.compareTo(b.title));
+        final overrides = {
+          for (final option in active)
+            if (option.defaultId != null) option.defaultId!: option,
+        };
         final disabled = custom.where((o) => !o.isActive).toList();
         return ListView(
           padding: const EdgeInsets.all(24),
@@ -142,11 +160,19 @@ class _ReportOptionsScreenState extends State<ReportOptionsScreen> {
               'Default options',
               style: Theme.of(context).textTheme.titleMedium,
             ),
-            for (final option in ReportOptionModel.defaults)
+            for (final original in ReportOptionModel.defaults)
               Card(
                 child: ListTile(
-                  title: Text(option.title),
-                  subtitle: Text(option.category.name),
+                  onTap: widget.schoolClass.isArchived || _busy
+                      ? null
+                      : () => _edit(overrides[original.id] ?? original),
+                  trailing: widget.schoolClass.isArchived
+                      ? null
+                      : const Icon(Icons.edit_outlined),
+                  title: Text((overrides[original.id] ?? original).title),
+                  subtitle: Text(
+                    '${original.category.name} • Details ${(overrides[original.id] ?? original).requiresDetails ? 'required' : 'optional'}',
+                  ),
                 ),
               ),
             const SizedBox(height: 16),
@@ -154,7 +180,7 @@ class _ReportOptionsScreenState extends State<ReportOptionsScreen> {
               'Class options',
               style: Theme.of(context).textTheme.titleMedium,
             ),
-            if (active.isEmpty)
+            if (active.where((o) => o.defaultId == null).isEmpty)
               const Card(
                 child: Padding(
                   padding: EdgeInsets.all(20),
@@ -163,11 +189,13 @@ class _ReportOptionsScreenState extends State<ReportOptionsScreen> {
                   ),
                 ),
               ),
-            for (final option in active)
+            for (final option in active.where((o) => o.defaultId == null))
               Card(
                 child: ListTile(
                   title: Text(option.title),
-                  subtitle: Text(option.category.name),
+                  subtitle: Text(
+                    '${option.category.name} • Details ${option.requiresDetails ? 'required' : 'optional'}',
+                  ),
                   trailing: widget.schoolClass.isArchived
                       ? null
                       : PopupMenuButton<String>(
@@ -219,6 +247,7 @@ class _ReportOptionDialogState extends State<_ReportOptionDialog> {
   );
   late ReportCategory _category =
       widget.option?.category ?? ReportCategory.equipment;
+  late bool _requiresDetails = widget.option?.requiresDetails ?? false;
 
   @override
   void dispose() {
@@ -259,8 +288,21 @@ class _ReportOptionDialogState extends State<_ReportOptionDialog> {
                 for (final value in ReportCategory.values)
                   DropdownMenuItem(value: value, child: Text(value.name)),
               ],
-              onChanged: (value) =>
-                  setState(() => _category = value ?? _category),
+              onChanged:
+                  widget.option?.isDefault == true ||
+                      widget.option?.defaultId != null
+                  ? null
+                  : (value) => setState(() => _category = value ?? _category),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Require teacher details'),
+              value: requiresReportDetails(_category, _requiresDetails),
+              onChanged:
+                  _category == ReportCategory.discipline ||
+                      _category == ReportCategory.other
+                  ? null
+                  : (value) => setState(() => _requiresDetails = value),
             ),
           ],
         ),
@@ -274,7 +316,11 @@ class _ReportOptionDialogState extends State<_ReportOptionDialog> {
       FilledButton(
         onPressed: () {
           if (_formKey.currentState!.validate()) {
-            Navigator.pop(context, (_title.text.trim(), _category));
+            Navigator.pop(context, (
+              _title.text.trim(),
+              _category,
+              requiresReportDetails(_category, _requiresDetails),
+            ));
           }
         },
         child: const Text('Save'),

@@ -2,6 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum ReportCategory { equipment, dress, discipline, other }
 
+bool requiresReportDetails(ReportCategory category, bool configured) =>
+    configured ||
+    category == ReportCategory.discipline ||
+    category == ReportCategory.other;
+
 class ReportOptionModel {
   const ReportOptionModel({
     required this.id,
@@ -9,6 +14,8 @@ class ReportOptionModel {
     required this.title,
     required this.category,
     required this.isActive,
+    this.requiresDetails = false,
+    this.defaultId,
     this.createdAt,
     this.createdBy,
     this.updatedAt,
@@ -19,6 +26,8 @@ class ReportOptionModel {
   final String title;
   final ReportCategory category;
   final bool isActive;
+  final bool requiresDetails;
+  final String? defaultId;
   final Timestamp? createdAt;
   final String? createdBy;
   final Timestamp? updatedAt;
@@ -45,6 +54,7 @@ class ReportOptionModel {
       title: 'Discipline/decorum issue',
       category: ReportCategory.discipline,
       isActive: true,
+      requiresDetails: true,
     ),
     ReportOptionModel(
       id: 'default_other',
@@ -52,6 +62,7 @@ class ReportOptionModel {
       title: 'Other',
       category: ReportCategory.other,
       isActive: true,
+      requiresDetails: true,
     ),
   ];
 
@@ -60,12 +71,21 @@ class ReportOptionModel {
   ) {
     final d =
         doc.data() ?? (throw StateError('Missing report option ${doc.id}'));
+    return fromData(doc.id, d);
+  }
+
+  static ReportOptionModel fromData(String id, Map<String, dynamic> d) {
     return ReportOptionModel(
-      id: doc.id,
+      id: id,
       classId: d['classId'] as String,
       title: d['title'] as String,
       category: ReportCategory.values.byName(d['category'] as String),
       isActive: d['isActive'] as bool,
+      requiresDetails: requiresReportDetails(
+        ReportCategory.values.byName(d['category'] as String),
+        d['requiresDetails'] as bool? ?? false,
+      ),
+      defaultId: d['defaultId'] as String?,
       createdAt: d['createdAt'] as Timestamp,
       createdBy: d['createdBy'] as String,
       updatedAt: d['updatedAt'] as Timestamp?,

@@ -66,6 +66,7 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
                 _AssignedClassTile(
                   key: ValueKey(assignment.classId),
                   assignment: assignment,
+                  attendanceMode: widget.attendanceMode,
                 ),
             ],
           );
@@ -74,8 +75,13 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen> {
 }
 
 class _AssignedClassTile extends StatefulWidget {
-  const _AssignedClassTile({super.key, required this.assignment});
+  const _AssignedClassTile({
+    super.key,
+    required this.assignment,
+    required this.attendanceMode,
+  });
   final TeacherAssignmentModel assignment;
+  final bool attendanceMode;
 
   @override
   State<_AssignedClassTile> createState() => _AssignedClassTileState();
@@ -108,19 +114,37 @@ class _AssignedClassTileState extends State<_AssignedClassTile> {
       }
       return Card(
         child: ListTile(
-          leading: const Icon(Icons.class_outlined),
-          title: Text('Grade ${schoolClass.grade} - ${schoolClass.section}'),
+          leading: schoolClass.isArchived
+              ? Tooltip(
+                  message: 'Archived class',
+                  child: Icon(
+                    Icons.archive_outlined,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    semanticLabel: 'Archived class',
+                  ),
+                )
+              : const Icon(Icons.class_outlined),
+          title: Text(
+            'Grade ${schoolClass.grade} - ${schoolClass.section}',
+            style: schoolClass.isArchived
+                ? TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  )
+                : null,
+          ),
           subtitle: Text(
             'Academic Year ${schoolClass.academicYear}'
             '${widget.assignment.subject == null ? '' : ' • ${widget.assignment.subject}'}',
           ),
-          trailing: schoolClass.isArchived
-              ? const Chip(label: Text('Archived'))
-              : const Icon(Icons.chevron_right),
+          trailing: const Icon(Icons.chevron_right),
           onTap: () => Navigator.push<void>(
             context,
             MaterialPageRoute(
-              builder: (_) => TeacherClassDetailScreen(classId: schoolClass.id),
+              builder: (_) => widget.attendanceMode
+                  ? schoolClass.isArchived
+                        ? ClassAttendanceHistoryScreen(schoolClass: schoolClass)
+                        : AttendanceScreen(schoolClass: schoolClass)
+                  : TeacherClassDetailScreen(classId: schoolClass.id),
             ),
           ),
         ),
@@ -248,10 +272,32 @@ class TeacherClassRosterScreen extends StatefulWidget {
 class _TeacherClassRosterScreenState extends State<TeacherClassRosterScreen> {
   late final Stream<List<StudentModel>> _students = StudentRepository()
       .watchActiveClass(widget.classId);
+  bool _searching = false;
+  String _search = '';
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Class Roster')),
+    appBar: AppBar(
+      title: _searching
+          ? TextField(
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'Search student name',
+              ),
+              onChanged: (value) => setState(() => _search = value),
+            )
+          : const Text('Class Roster'),
+      actions: [
+        IconButton(
+          tooltip: _searching ? 'Close search' : 'Search students',
+          icon: Icon(_searching ? Icons.close : Icons.search),
+          onPressed: () => setState(() {
+            _searching = !_searching;
+            _search = '';
+          }),
+        ),
+      ],
+    ),
     body: StreamBuilder<List<StudentModel>>(
       stream: _students,
       builder: (context, snapshot) {
@@ -277,11 +323,18 @@ class _TeacherClassRosterScreenState extends State<TeacherClassRosterScreen> {
             child: Text('No active students in this class yet.'),
           );
         }
+        final query = _search.trim().toLowerCase();
+        final visible = students
+            .where((student) => student.name.toLowerCase().contains(query))
+            .toList();
+        if (visible.isEmpty) {
+          return const Center(child: Text('No students match your search.'));
+        }
         return ListView.builder(
           padding: const EdgeInsets.all(30),
-          itemCount: students.length,
+          itemCount: visible.length,
           itemBuilder: (context, index) {
-            final student = students[index];
+            final student = visible[index];
             return Card(
               child: ListTile(
                 leading: const Icon(Icons.person_outline),

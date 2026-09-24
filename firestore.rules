@@ -85,10 +85,16 @@ service cloud.firestore {
     }
     function validReportOption(d) {
       return d.keys().hasAll(['classId', 'title', 'category', 'isActive', 'createdAt', 'createdBy', 'updatedAt'])
-        && d.keys().hasOnly(['classId', 'title', 'category', 'isActive', 'createdAt', 'createdBy', 'updatedAt'])
+        && d.keys().hasOnly(['classId', 'defaultId', 'title', 'category', 'requiresDetails', 'isActive', 'createdAt', 'createdBy', 'updatedAt'])
         && d.classId is string && d.classId.size() > 0 && activeClass(d.classId)
         && d.title is string && d.title.size() > 0 && d.title.size() <= 120
         && d.category in ['equipment', 'dress', 'discipline', 'other']
+        && (!('defaultId' in d) ||
+          (d.defaultId == 'default_equipment' && d.category == 'equipment') ||
+          (d.defaultId == 'default_dress' && d.category == 'dress') ||
+          (d.defaultId == 'default_discipline' && d.category == 'discipline') ||
+          (d.defaultId == 'default_other' && d.category == 'other'))
+        && (!('requiresDetails' in d) || d.requiresDetails is bool)
         && d.isActive is bool && d.createdAt is timestamp && d.updatedAt is timestamp
         && d.createdBy is string;
     }
@@ -108,6 +114,12 @@ service cloud.firestore {
         && get(path).data.isActive == true && get(path).data.category == d.category
         && get(path).data.title == d.titleSnapshot);
     }
+    function optionRequiresDetails(d) {
+      let path = /databases/$(database)/documents/reportOptions/$(d.optionId);
+      return !builtInOption(d) && exists(path)
+        && ('requiresDetails' in get(path).data)
+        && get(path).data.requiresDetails == true;
+    }
     function validStudentReport(d) {
       let studentPath = /databases/$(database)/documents/students/$(d.studentId);
       let attendancePath = /databases/$(database)/documents/attendance/$(d.studentId + '_' + d.attendanceDateKey);
@@ -122,6 +134,8 @@ service cloud.firestore {
         && d.severity in ['minor', 'moderate', 'serious']
         && d.details is string && d.details.size() <= 2000
         && (d.severity != 'serious' || d.details.trim().size() >= 10)
+        && (!(d.category in ['discipline', 'other']) || d.details.trim().size() > 0)
+        && (!optionRequiresDetails(d) || d.details.trim().size() > 0)
         && d.reportedBy == request.auth.uid && d.reportedAt == request.time
         && d.status == 'open' && exists(studentPath)
         && get(studentPath).data.classId == d.classId
@@ -152,7 +166,8 @@ service cloud.firestore {
       allow delete: if admin();
     }
     match /students/{studentId} {
-      allow get, list: if admin() || (assigned(resource.data.classId)
+      allow get: if admin() || assigned(resource.data.classId);
+      allow list: if admin() || (assigned(resource.data.classId)
         && resource.data.isArchived == false);
       allow create: if admin() && studentId.matches('^[A-Za-z0-9]{20}$')
         && validStudent(request.resource.data) && activeClass(request.resource.data.classId)
@@ -204,7 +219,7 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
       allow update: if admin() && validReportOption(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['title', 'category', 'isActive', 'updatedAt'])
+          .hasOnly(['title', 'category', 'requiresDetails', 'isActive', 'updatedAt'])
         && request.resource.data.classId == resource.data.classId
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt

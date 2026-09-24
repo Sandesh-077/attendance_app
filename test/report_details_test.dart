@@ -12,5 +12,25 @@ void main() {
     );
     expect(reportDetailsValid(ReportSeverity.minor, ''), isTrue);
     expect(reportDetailsValid(ReportSeverity.moderate, ' '), isTrue);
+    expect(
+      reportDetailsValid(ReportSeverity.minor, ' ', requiresDetails: true),
+      isFalse,
+    );
+    expect(
+      reportDetailsValid(
+        ReportSeverity.minor,
+        ' explanation ',
+        requiresDetails: true,
+      ),
+      isTrue,
+    );
+    expect(
+      reportDetailsValid(
+        ReportSeverity.serious,
+        'short',
+        requiresDetails: false,
+      ),
+      isFalse,
+    );
   });
 }

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../models/class_model.dart';
 import '../models/student_model.dart';
+import '../models/student_report_model.dart';
 import '../repositories/class_repository.dart';
 import '../repositories/student_repository.dart';
+import '../repositories/student_report_repository.dart';
 import 'student_form_screen.dart';
 import 'attendance_screen.dart';
 
@@ -25,7 +27,16 @@ class StudentDetailScreen extends StatefulWidget {
 
 class _StudentDetailScreenState extends State<StudentDetailScreen> {
   late StudentModel _student = widget.student;
+  late Future<List<StudentReportModel>> _reports = StudentReportRepository()
+      .forStudent(widget.student.id);
   bool _archiving = false;
+
+  void _reloadReports() => setState(() {
+    _reports = StudentReportRepository().forStudent(_student.id);
+  });
+
+  String _reportDate(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
   Future<void> _edit() async {
     final saved = await Navigator.push<bool>(
@@ -172,6 +183,92 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                 ),
               ),
             ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Reports',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh reports',
+                onPressed: _reloadReports,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          FutureBuilder<List<StudentReportModel>>(
+            future: _reports,
+            builder: (context, reportsSnapshot) {
+              if (reportsSnapshot.hasError) {
+                return Card(
+                  child: ListTile(
+                    title: const Text('Unable to load reports'),
+                    trailing: TextButton(
+                      onPressed: _reloadReports,
+                      child: const Text('Retry'),
+                    ),
+                  ),
+                );
+              }
+              if (!reportsSnapshot.hasData) {
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: LinearProgressIndicator(),
+                );
+              }
+              final reports = reportsSnapshot.data!;
+              if (reports.isEmpty) {
+                return const Card(child: ListTile(title: Text('No reports')));
+              }
+              return Column(
+                children: [
+                  for (final report in reports)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (report.status == ReportStatus.resolved)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  'Resolved',
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            Text(
+                              report.titleSnapshot,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${_reportDate(report.reportedAt.toDate())} • ${report.severity.name.toUpperCase()}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            if (report.details.trim().isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(report.details),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 20),
           if (!_student.isArchived)

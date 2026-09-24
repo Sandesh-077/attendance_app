@@ -71,9 +71,7 @@ class _StudentsScreenState extends State<StudentsScreen> {
           final query = _search.trim().toLowerCase();
           return student.isArchived == _showArchived &&
               matchesClass &&
-              (query.isEmpty ||
-                  student.name.toLowerCase().contains(query) ||
-                  student.rollNumber.toLowerCase().contains(query));
+              (query.isEmpty || student.name.toLowerCase().contains(query));
         }).toList();
 
         return ListView(
@@ -98,6 +96,7 @@ class _StudentsScreenState extends State<StudentsScreen> {
                       builder: (_) => StudentFormScreen(
                         repository: _studentsRepository,
                         classRepository: _classesRepository,
+                        fixedClassId: widget.initialClassId,
                       ),
                     ),
                   ),
@@ -110,7 +109,7 @@ class _StudentsScreenState extends State<StudentsScreen> {
             TextField(
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.search),
-                hintText: 'Search name or roll number',
+                hintText: 'Search student name',
                 border: OutlineInputBorder(),
               ),
               onChanged: (value) => setState(() => _search = value),

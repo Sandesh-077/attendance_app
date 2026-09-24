@@ -18,16 +18,36 @@ class ReportOptionRepository {
         .where('classId', isEqualTo: classId)
         .where('isActive', isEqualTo: true)
         .get();
-    return [
-      ...ReportOptionModel.defaults,
-      ...s.docs.map(ReportOptionModel.fromDocument),
-    ];
+    return effectiveReportOptions(s.docs.map(ReportOptionModel.fromDocument));
+  }
+
+  Future<String> customizeDefault({
+    required String classId,
+    required ReportOptionModel defaultOption,
+    required String title,
+    required bool requiresDetails,
+    required String actorId,
+  }) async {
+    final ref = _db.collection('reportOptions').doc();
+    await ref.set({
+      'classId': classId,
+      'defaultId': defaultOption.id,
+      'title': title.trim(),
+      'category': defaultOption.category.name,
+      'requiresDetails': requiresDetails,
+      'isActive': true,
+      'createdAt': FieldValue.serverTimestamp(),
+      'createdBy': actorId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    return ref.id;
   }
 
   Future<String> create({
     required String classId,
     required String title,
     required ReportCategory category,
+    required bool requiresDetails,
     required String actorId,
   }) async {
     final ref = _db.collection('reportOptions').doc();
@@ -35,6 +55,7 @@ class ReportOptionRepository {
       'classId': classId,
       'title': title.trim(),
       'category': category.name,
+      'requiresDetails': requiresDetails,
       'isActive': true,
       'createdAt': FieldValue.serverTimestamp(),
       'createdBy': actorId,
@@ -47,9 +68,11 @@ class ReportOptionRepository {
     String id, {
     required String title,
     required ReportCategory category,
+    required bool requiresDetails,
   }) => _db.collection('reportOptions').doc(id).update({
     'title': title.trim(),
     'category': category.name,
+    'requiresDetails': requiresDetails,
     'updatedAt': FieldValue.serverTimestamp(),
   });
 
@@ -57,4 +80,17 @@ class ReportOptionRepository {
       .collection('reportOptions')
       .doc(id)
       .update({'isActive': false, 'updatedAt': FieldValue.serverTimestamp()});
+}
+
+List<ReportOptionModel> effectiveReportOptions(
+  Iterable<ReportOptionModel> custom,
+) {
+  final active = custom.where((option) => option.isActive).toList();
+  final overridden = active.map((option) => option.defaultId).toSet();
+  return [
+    ...ReportOptionModel.defaults.where(
+      (option) => !overridden.contains(option.id),
+    ),
+    ...active,
+  ];
 }
