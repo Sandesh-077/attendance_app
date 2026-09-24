@@ -17,6 +17,10 @@ service cloud.firestore {
       return teacher() && exists(path) && get(path).data.teacherId == request.auth.uid
         && get(path).data.classId == classId && get(path).data.isActive == true;
     }
+    match /appConfig/currentVersion {
+      allow get: if admin() || teacher();
+      allow list, create, update, delete: if false;
+    }
     function validUser(d, uid) {
       return d.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt'])
         && d.keys().hasOnly(['uid', 'email', 'name', 'role', 'createdAt'])

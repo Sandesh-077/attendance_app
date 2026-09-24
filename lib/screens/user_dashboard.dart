@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'profile.dart';
 import 'teacher_classes_screen.dart';
+import 'app_info_screen.dart';
 
 class UserDashboard extends StatefulWidget {
   const UserDashboard({super.key});
@@ -73,6 +74,19 @@ class _UserDashboardState extends State<UserDashboard> {
                   },
                 ),
               const Spacer(),
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('App Info'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AppInfoScreen(),
+                    ),
+                  );
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.logout),
                 title: const Text('Log out'),

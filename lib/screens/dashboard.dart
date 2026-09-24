@@ -6,6 +6,7 @@ import 'profile.dart';
 import 'teachers_screen.dart';
 import 'classes_screen.dart';
 import 'admin_reports_screen.dart';
+import 'app_info_screen.dart';
 
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key, required this.role});
@@ -92,6 +93,19 @@ class _DashboardState extends State<Dashboard> {
                 ),
               ),
               const Spacer(),
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('App Info'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AppInfoScreen(),
+                    ),
+                  );
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.logout),
                 title: const Text('Log out'),

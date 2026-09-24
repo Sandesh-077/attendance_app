@@ -52,6 +52,7 @@ app.*.map.json
 .firebase/
 *.jks
 *.keystore
+/android/key.properties
 
 # Local package lockfile
 pubspec.lock

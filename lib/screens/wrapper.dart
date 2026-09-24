@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'login.dart';
 import 'admin_dashboard.dart';
 import 'user_dashboard.dart';
+import 'update_gate.dart';
 
 class Wrapper extends StatelessWidget {
   const Wrapper({super.key});
@@ -38,8 +39,10 @@ class Wrapper extends StatelessWidget {
               );
             }
             final role = profileSnapshot.data?.data()?['role'];
-            if (role == 'Admin') return const AdminDashboard();
-            if (role == 'user') return const UserDashboard();
+            if (role == 'Admin') {
+              return const UpdateGate(child: AdminDashboard());
+            }
+            if (role == 'user') return const UpdateGate(child: UserDashboard());
             return const _ProfileProblem(
               message: 'Your account profile is unavailable.',
             );
