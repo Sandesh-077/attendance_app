@@ -1,30 +1,41 @@
-class StudentModel {
-  final String id;
-  final String name;
-  final String rollNumber;
-  final String classId;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-  StudentModel({
+class StudentModel {
+  const StudentModel({
     required this.id,
     required this.name,
     required this.rollNumber,
     required this.classId,
+    required this.isArchived,
+    required this.createdAt,
   });
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'rollNumber': rollNumber,
-      'classId': classId,
-    };
-  }
 
-  factory StudentModel.fromJson(Map<String, dynamic> json) {
+  final String id;
+  final String name;
+  final String rollNumber;
+  final String classId;
+  final bool isArchived;
+  final Timestamp createdAt;
+
+  factory StudentModel.fromDocument(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data() ?? (throw StateError('Missing student ${doc.id}'));
     return StudentModel(
-      id: json['id'] ?? '',
-      name: json['name'] ?? '',
-      rollNumber: json['rollNumber'] ?? '',
-      classId: json['classId'] ?? '',
+      id: doc.id,
+      name: data['name'] as String,
+      rollNumber: data['rollNumber'] as String,
+      classId: data['classId'] as String,
+      isArchived: data['isArchived'] as bool,
+      createdAt: data['createdAt'] as Timestamp,
     );
   }
+
+  Map<String, dynamic> toFirestore() => {
+    'name': name,
+    'rollNumber': rollNumber,
+    'classId': classId,
+    'isArchived': isArchived,
+    'createdAt': createdAt,
+  };
 }

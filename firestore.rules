@@ -1,33 +1,227 @@
-// users/{uid}: uid, email, name, role, and createdAt are required;
-// classId is optional and starts null. Passwords and tokens are not allowed.
-// Other collections have no client access until their schemas are designed.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isOwner(uid) {
-      return request.auth != null && request.auth.uid == uid;
+    function signedIn() { return request.auth != null; }
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function userPath(uid) { return /databases/$(database)/documents/users/$(uid); }
+    function admin() {
+      return signedIn() && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.role == 'Admin';
     }
-
-    function isValidUser(data, uid) {
-      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt'])
-        && data.keys().hasOnly(['uid', 'email', 'name', 'role', 'classId', 'createdAt'])
-        && data.uid == uid
-        && data.email is string
-        && data.email == request.auth.token.email
-        && data.email.size() <= 254
-        && data.name is string
-        && data.name.size() > 0
-        && data.name.size() <= 200
-        && data.role == 'user'
-        && data.createdAt == request.time
-        && (!('classId' in data) || data.classId == null);
+    function teacher() {
+      return signedIn() && exists(userPath(request.auth.uid))
+        && get(userPath(request.auth.uid)).data.role == 'user';
     }
-
+    function assigned(classId) {
+      let path = /databases/$(database)/documents/teacherAssignments/$(request.auth.uid + '_' + classId);
+      return teacher() && exists(path) && get(path).data.teacherId == request.auth.uid
+        && get(path).data.classId == classId && get(path).data.isActive == true;
+    }
+    function validUser(d, uid) {
+      return d.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt'])
+        && d.keys().hasOnly(['uid', 'email', 'name', 'role', 'createdAt'])
+        && d.uid == uid && d.email is string && d.email == request.auth.token.email
+        && d.email.size() <= 254 && d.name is string && d.name.size() > 0
+        && d.name.size() <= 200 && d.role == 'user' && d.createdAt == request.time;
+    }
+    function validClass(d) {
+      return d.keys().hasAll(['grade', 'section', 'academicYear', 'isArchived', 'createdAt'])
+        && d.keys().hasOnly(['grade', 'section', 'academicYear', 'isArchived', 'createdAt'])
+        && d.grade is string && d.grade.size() > 0 && d.grade.size() <= 30
+        && d.section is string && d.section.size() > 0 && d.section.size() <= 30
+        && d.academicYear is string && d.academicYear.size() > 0 && d.academicYear.size() <= 30
+        && d.isArchived is bool && d.createdAt is timestamp;
+    }
+    function validStudent(d) {
+      return d.keys().hasAll(['name', 'rollNumber', 'classId', 'isArchived', 'createdAt'])
+        && d.keys().hasOnly(['name', 'rollNumber', 'classId', 'isArchived', 'createdAt'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 200
+        && d.rollNumber is string && d.rollNumber.size() > 0 && d.rollNumber.size() <= 40
+        && d.classId is string && exists(/databases/$(database)/documents/classes/$(d.classId))
+        && d.isArchived is bool && d.createdAt is timestamp;
+    }
+    function activeClass(classId) {
+      let path = /databases/$(database)/documents/classes/$(classId);
+      return exists(path) && get(path).data.isArchived == false;
+    }
+    function validAssignment(d, id) {
+      return d.keys().hasAll(['teacherId', 'classId', 'isActive', 'createdAt'])
+        && d.keys().hasOnly(['teacherId', 'classId', 'subject', 'isActive', 'createdAt'])
+        && d.teacherId is string && d.classId is string && id == d.teacherId + '_' + d.classId
+        && exists(userPath(d.teacherId)) && get(userPath(d.teacherId)).data.role == 'user'
+        && exists(/databases/$(database)/documents/classes/$(d.classId))
+        && (!('subject' in d) || (d.subject is string && d.subject.size() <= 100))
+        && d.isActive is bool && d.createdAt is timestamp;
+    }
+    function validSchoolDateKey(key) {
+      return key is string && key.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && int(key[0:4]) >= 2020
+        && int(key[5:7]) >= 1 && int(key[5:7]) <= 12
+        && int(key[8:10]) >= 1 && int(key[8:10]) <= 31
+        && timestamp.date(int(key[0:4]), int(key[5:7]), int(key[8:10])).year() == int(key[0:4])
+        && timestamp.date(int(key[0:4]), int(key[5:7]), int(key[8:10])).month() == int(key[5:7])
+        && timestamp.date(int(key[0:4]), int(key[5:7]), int(key[8:10])).day() == int(key[8:10])
+        // Allow local "today" across UTC offsets, but never a distant future date.
+        && timestamp.date(int(key[0:4]), int(key[5:7]), int(key[8:10]))
+          <= request.time.date() + duration.value(1, 'd');
+    }
+    function validAttendance(d, id) {
+      return d.keys().hasAll(['studentId', 'classId', 'dateKey', 'status',
+          'recordedAt', 'recordedBy', 'updatedAt', 'updatedBy'])
+        && d.keys().hasOnly(['studentId', 'classId', 'dateKey', 'status',
+          'recordedAt', 'recordedBy', 'updatedAt', 'updatedBy'])
+        && d.studentId is string && d.classId is string
+        && validSchoolDateKey(d.dateKey)
+        && id == d.studentId + '_' + d.dateKey
+        && d.status in ['present', 'absent', 'late']
+        && d.recordedAt is timestamp && d.updatedAt is timestamp
+        && d.recordedBy is string && d.updatedBy is string
+        && exists(/databases/$(database)/documents/students/$(d.studentId))
+        && get(/databases/$(database)/documents/students/$(d.studentId)).data.classId == d.classId;
+    }
+    function validReportOption(d) {
+      return d.keys().hasAll(['classId', 'title', 'category', 'isActive', 'createdAt', 'createdBy', 'updatedAt'])
+        && d.keys().hasOnly(['classId', 'title', 'category', 'isActive', 'createdAt', 'createdBy', 'updatedAt'])
+        && d.classId is string && d.classId.size() > 0 && activeClass(d.classId)
+        && d.title is string && d.title.size() > 0 && d.title.size() <= 120
+        && d.category in ['equipment', 'dress', 'discipline', 'other']
+        && d.isActive is bool && d.createdAt is timestamp && d.updatedAt is timestamp
+        && d.createdBy is string;
+    }
+    function builtInOption(d) {
+      return (d.optionId == 'default_equipment' && d.category == 'equipment'
+          && d.titleSnapshot == 'Required equipment/material missing')
+        || (d.optionId == 'default_dress' && d.category == 'dress'
+          && d.titleSnapshot == 'Improper dress/uniform')
+        || (d.optionId == 'default_discipline' && d.category == 'discipline'
+          && d.titleSnapshot == 'Discipline/decorum issue')
+        || (d.optionId == 'default_other' && d.category == 'other'
+          && d.titleSnapshot == 'Other');
+    }
+    function validOptionReference(d) {
+      let path = /databases/$(database)/documents/reportOptions/$(d.optionId);
+      return builtInOption(d) || (exists(path) && get(path).data.classId == d.classId
+        && get(path).data.isActive == true && get(path).data.category == d.category
+        && get(path).data.title == d.titleSnapshot);
+    }
+    function validStudentReport(d) {
+      let studentPath = /databases/$(database)/documents/students/$(d.studentId);
+      let attendancePath = /databases/$(database)/documents/attendance/$(d.studentId + '_' + d.attendanceDateKey);
+      return d.keys().hasAll(['studentId', 'classId', 'attendanceDateKey', 'optionId',
+          'category', 'titleSnapshot', 'severity', 'details', 'reportedBy', 'reportedAt', 'status'])
+        && d.keys().hasOnly(['studentId', 'classId', 'attendanceDateKey', 'optionId',
+          'category', 'titleSnapshot', 'severity', 'details', 'reportedBy', 'reportedAt', 'status'])
+        && d.studentId is string && d.classId is string && d.optionId is string
+        && validSchoolDateKey(d.attendanceDateKey)
+        && d.category in ['equipment', 'dress', 'discipline', 'other']
+        && d.titleSnapshot is string && d.titleSnapshot.size() > 0 && d.titleSnapshot.size() <= 120
+        && d.severity in ['minor', 'moderate', 'serious']
+        && d.details is string && d.details.size() <= 2000
+        && (d.severity != 'serious' || d.details.trim().size() >= 10)
+        && d.reportedBy == request.auth.uid && d.reportedAt == request.time
+        && d.status == 'open' && exists(studentPath)
+        && get(studentPath).data.classId == d.classId
+        && get(studentPath).data.isArchived == false
+        && exists(attendancePath)
+        && get(attendancePath).data.studentId == d.studentId
+        && get(attendancePath).data.classId == d.classId
+        && get(attendancePath).data.dateKey == d.attendanceDateKey
+        && activeClass(d.classId) && validOptionReference(d);
+    }
     match /users/{uid} {
-      allow get: if isOwner(uid);
-      allow list: if false;
-      allow create: if isOwner(uid) && isValidUser(request.resource.data, uid);
-      allow update, delete: if false;
+      allow get: if owner(uid) || admin();
+      allow list: if admin();
+      allow create: if owner(uid) && validUser(request.resource.data, uid);
+      allow update: if owner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 200;
+      allow delete: if false;
+    }
+    match /classes/{classId} {
+      allow get, list: if admin() || assigned(classId);
+      allow create: if admin() && classId.matches('^[A-Za-z0-9]{20}$')
+        && validClass(request.resource.data) && request.resource.data.createdAt == request.time;
+      allow update: if admin() && validClass(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if admin();
+    }
+    match /students/{studentId} {
+      allow get, list: if admin() || (assigned(resource.data.classId)
+        && resource.data.isArchived == false);
+      allow create: if admin() && studentId.matches('^[A-Za-z0-9]{20}$')
+        && validStudent(request.resource.data) && activeClass(request.resource.data.classId)
+        && request.resource.data.isArchived == false
+        && request.resource.data.createdAt == request.time;
+      allow update: if admin() && validStudent(request.resource.data)
+        && (resource.data.isArchived == false || request.resource.data.isArchived == true)
+        && (request.resource.data.classId == resource.data.classId
+          || activeClass(request.resource.data.classId))
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+    }
+    match /teacherAssignments/{assignmentId} {
+      allow get, list: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
+      allow create: if admin() && validAssignment(request.resource.data, assignmentId)
+        && request.resource.data.createdAt == request.time;
+      allow update: if admin() && validAssignment(request.resource.data, assignmentId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['subject', 'isActive'])
+        && request.resource.data.teacherId == resource.data.teacherId
+        && request.resource.data.classId == resource.data.classId
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if admin();
+    }
+    match /attendance/{attendanceId} {
+      allow get, list: if admin() || assigned(resource.data.classId);
+      allow create: if (admin() || assigned(request.resource.data.classId))
+        && validAttendance(request.resource.data, attendanceId)
+        && activeClass(request.resource.data.classId)
+        && get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.isArchived == false
+        && request.resource.data.recordedBy == request.auth.uid
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.recordedAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if (admin() || assigned(resource.data.classId))
+        && validAttendance(request.resource.data, attendanceId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'updatedAt', 'updatedBy'])
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if admin();
+    }
+    match /reportOptions/{optionId} {
+      allow get, list: if admin() || assigned(resource.data.classId);
+      allow create: if admin() && optionId.matches('^[A-Za-z0-9]{20}$')
+        && validReportOption(request.resource.data)
+        && request.resource.data.isActive == true
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if admin() && validReportOption(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['title', 'category', 'isActive', 'updatedAt'])
+        && request.resource.data.classId == resource.data.classId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (resource.data.isActive == true || request.resource.data.isActive == false)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+    match /studentReports/{reportId} {
+      allow get, list: if admin() || assigned(resource.data.classId);
+      allow create: if (admin() || assigned(request.resource.data.classId))
+        && reportId.matches('^[A-Za-z0-9]{20}$')
+        && validStudentReport(request.resource.data);
+      allow update: if admin() && resource.data.status == 'open'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'resolvedAt', 'resolvedBy', 'resolutionNote'])
+        && request.resource.data.status == 'resolved'
+        && request.resource.data.resolvedAt == request.time
+        && request.resource.data.resolvedBy == request.auth.uid
+        && request.resource.data.resolutionNote is string
+        && request.resource.data.resolutionNote.size() <= 2000;
+      allow delete: if false;
     }
   }
 }

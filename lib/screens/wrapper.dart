@@ -39,7 +39,7 @@ class Wrapper extends StatelessWidget {
             }
             final role = profileSnapshot.data?.data()?['role'];
             if (role == 'Admin') return const AdminDashboard();
-            if (role == 'user' || role == 'User') return const UserDashboard();
+            if (role == 'user') return const UserDashboard();
             return const _ProfileProblem(
               message: 'Your account profile is unavailable.',
             );

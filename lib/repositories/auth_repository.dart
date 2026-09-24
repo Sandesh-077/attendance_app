@@ -88,4 +88,37 @@ class AuthRepository {
   Future<void> sendPasswordResetEmail(String email) async {
     await _auth.sendPasswordResetEmail(email: email.trim());
   }
+
+  Future<String?> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null) {
+      return 'Your account is unavailable. Please sign in again.';
+    }
+    try {
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: currentPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return switch (e.code) {
+        'wrong-password' ||
+        'invalid-credential' => 'Current password is incorrect.',
+        'weak-password' => 'Choose a stronger new password.',
+        'requires-recent-login' =>
+          'Please sign in again and retry changing your password.',
+        'too-many-requests' => 'Too many attempts. Please try again later.',
+        'network-request-failed' => 'Check your connection and try again.',
+        _ => 'Unable to change password. Please try again.',
+      };
+    } catch (_) {
+      return 'Unable to change password. Please try again.';
+    }
+  }
 }
