@@ -1,0 +1,33 @@
+// users/{uid}: uid, email, name, role, and createdAt are required;
+// classId is optional and starts null. Passwords and tokens are not allowed.
+// Other collections have no client access until their schemas are designed.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isValidUser(data, uid) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'name', 'role', 'classId', 'createdAt'])
+        && data.uid == uid
+        && data.email is string
+        && data.email == request.auth.token.email
+        && data.email.size() <= 254
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 200
+        && data.role == 'user'
+        && data.createdAt == request.time
+        && (!('classId' in data) || data.classId == null);
+    }
+
+    match /users/{uid} {
+      allow get: if isOwner(uid);
+      allow list: if false;
+      allow create: if isOwner(uid) && isValidUser(request.resource.data, uid);
+      allow update, delete: if false;
+    }
+  }
+}

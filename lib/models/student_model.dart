@@ -1,4 +1,4 @@
-class StudentModel{
+class StudentModel {
   final String id;
   final String name;
   final String rollNumber;
@@ -8,8 +8,8 @@ class StudentModel{
     required this.id,
     required this.name,
     required this.rollNumber,
-    required this.classId
-});
+    required this.classId,
+  });
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -18,6 +18,7 @@ class StudentModel{
       'classId': classId,
     };
   }
+
   factory StudentModel.fromJson(Map<String, dynamic> json) {
     return StudentModel(
       id: json['id'] ?? '',
@@ -26,5 +27,4 @@ class StudentModel{
       classId: json['classId'] ?? '',
     );
   }
-
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ca_attendance/repositories/auth_repository.dart';
+import 'package:ca_attendance/screens/signup.dart';
+import 'package:ca_attendance/screens/forgot_password.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -29,10 +31,10 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (result != 'Admin' && result != 'User') {
+    if (result != null) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Login Failed: $result')));
+      ).showSnackBar(SnackBar(content: Text(result)));
     }
   }
 
@@ -56,11 +58,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // School's Logo
                   const Image(
                     image: AssetImage('assets/logo.png'),
                     height: 120,
                   ),
+
                   const SizedBox(height: 15.0),
+
+                  // Welcome Back Text
                   Text(
                     "Welcome Back",
                     textAlign: TextAlign.center,
@@ -70,13 +76,18 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Colors.blue[700],
                     ),
                   ),
+
                   const SizedBox(height: 10),
+
                   const Text(
                     "Sign in to continue",
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
+
                   const SizedBox(height: 25),
+
+                  // TextBox to enter email and password
                   TextField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -87,7 +98,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       border: OutlineInputBorder(),
                     ),
                   ),
+
                   const SizedBox(height: 20),
+
                   TextField(
                     controller: _passwordController,
                     obscureText: _isPasswordHidden,
@@ -110,15 +123,27 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 10),
+
+                  // Forgot Password Section
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ForgotPasswordScreen(),
+                          ),
+                        );
+                      },
                       child: const Text("Forgot Password?"),
                     ),
                   ),
+
                   const SizedBox(height: 20),
+
                   // Login Button
                   _isLoading
                       ? Center(child: CircularProgressIndicator())
@@ -129,13 +154,21 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           child: const Text("Login"),
                         ),
+
                   const SizedBox(height: 30),
+
+                  // Don't have an account? Section
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Text("Don't have an account?"),
                       TextButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(builder: (_) => SignUp()),
+                          );
+                        },
                         child: const Text("Sign Up"),
                       ),
                     ],
