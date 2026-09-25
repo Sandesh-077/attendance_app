@@ -23,6 +23,14 @@ class TeacherAssignmentRepository {
             snapshot.docs.map(TeacherAssignmentModel.fromDocument).toList(),
       );
 
+  Stream<List<TeacherAssignmentModel>> watchAll() => _db
+      .collection('teacherAssignments')
+      .snapshots()
+      .map(
+        (snapshot) =>
+            snapshot.docs.map(TeacherAssignmentModel.fromDocument).toList(),
+      );
+
   Future<void> assign({
     required String teacherId,
     required String classId,

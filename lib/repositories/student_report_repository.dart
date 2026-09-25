@@ -81,6 +81,11 @@ class StudentReportRepository {
   Future<List<StudentReportModel>> adminAll() async =>
       _map(await _reports.orderBy('reportedAt', descending: true).get());
 
+  Future<StudentReportModel?> get(String id) async {
+    final doc = await _reports.doc(id).get();
+    return doc.exists ? StudentReportModel.fromDocument(doc) : null;
+  }
+
   Future<void> resolve(
     String id, {
     required String actorId,

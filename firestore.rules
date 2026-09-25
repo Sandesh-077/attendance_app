@@ -108,21 +108,26 @@ service cloud.firestore {
         || (d.optionId == 'default_other' && d.category == 'other'
           && d.titleSnapshot == 'Other');
     }
-    function validOptionReference(d) {
+    function validCustomOptionReference(d) {
       let path = /databases/$(database)/documents/reportOptions/$(d.optionId);
-      return builtInOption(d) || (exists(path) && get(path).data.classId == d.classId
-        && get(path).data.isActive == true && get(path).data.category == d.category
-        && get(path).data.title == d.titleSnapshot);
+      let option = get(path).data;
+      return option.classId == d.classId && option.isActive == true
+        && option.category == d.category && option.title == d.titleSnapshot
+        && (!('requiresDetails' in option) || option.requiresDetails != true
+          || d.details.trim().size() > 0);
     }
-    function optionRequiresDetails(d) {
-      let path = /databases/$(database)/documents/reportOptions/$(d.optionId);
-      return !builtInOption(d) && exists(path)
-        && ('requiresDetails' in get(path).data)
-        && get(path).data.requiresDetails == true;
+    function validOptionReference(d) {
+      return builtInOption(d) || validCustomOptionReference(d);
+    }
+    function validReportTargets(d) {
+      let student = get(/databases/$(database)/documents/students/$(d.studentId)).data;
+      let attendance = get(/databases/$(database)/documents/attendance/$(d.studentId + '_' + d.attendanceDateKey)).data;
+      let classData = get(/databases/$(database)/documents/classes/$(d.classId)).data;
+      return student.classId == d.classId && student.isArchived == false
+        && attendance.studentId == d.studentId && attendance.classId == d.classId
+        && attendance.dateKey == d.attendanceDateKey && classData.isArchived == false;
     }
     function validStudentReport(d) {
-      let studentPath = /databases/$(database)/documents/students/$(d.studentId);
-      let attendancePath = /databases/$(database)/documents/attendance/$(d.studentId + '_' + d.attendanceDateKey);
       return d.keys().hasAll(['studentId', 'classId', 'attendanceDateKey', 'optionId',
           'category', 'titleSnapshot', 'severity', 'details', 'reportedBy', 'reportedAt', 'status'])
         && d.keys().hasOnly(['studentId', 'classId', 'attendanceDateKey', 'optionId',
@@ -135,16 +140,9 @@ service cloud.firestore {
         && d.details is string && d.details.size() <= 2000
         && (d.severity != 'serious' || d.details.trim().size() >= 10)
         && (!(d.category in ['discipline', 'other']) || d.details.trim().size() > 0)
-        && (!optionRequiresDetails(d) || d.details.trim().size() > 0)
+        && validOptionReference(d)
         && d.reportedBy == request.auth.uid && d.reportedAt == request.time
-        && d.status == 'open' && exists(studentPath)
-        && get(studentPath).data.classId == d.classId
-        && get(studentPath).data.isArchived == false
-        && exists(attendancePath)
-        && get(attendancePath).data.studentId == d.studentId
-        && get(attendancePath).data.classId == d.classId
-        && get(attendancePath).data.dateKey == d.attendanceDateKey
-        && activeClass(d.classId) && validOptionReference(d);
+        && d.status == 'open' && validReportTargets(d);
     }
     match /users/{uid} {
       allow get: if owner(uid) || admin();
